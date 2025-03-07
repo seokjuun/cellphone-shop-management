@@ -1,5 +1,6 @@
-package app.store.dao;
+package app.store.test;
 
+import app.store.dao.PhoneDao;
 import app.store.dto.Phone;
 import java.math.BigDecimal;
 import java.sql.Date;

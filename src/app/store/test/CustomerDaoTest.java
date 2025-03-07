@@ -1,5 +1,6 @@
-package app.store.dao;
+package app.store.test;
 
+import app.store.dao.CustomerDao;
 import app.store.dto.Customer;
 
 import java.sql.Date;

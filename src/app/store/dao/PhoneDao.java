@@ -185,6 +185,28 @@ public class PhoneDao {
         return result;
     }
 
+    // 특정 휴대폰의 재고 감소 (판매 시)
+    public int reduceStock(int phoneId) {
+        int result = -1;
+        String sql = "UPDATE Phone SET stock = stock - 1 WHERE phone_id = ? AND stock > 0";
+
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+
+        try {
+            conn = DBManager.getConnection();
+            pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, phoneId);
+
+            result = pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            DBManager.releaseConnection(pstmt, conn);
+        }
+        return result;
+    }
+
     // ResultSet을 Phone 객체로 변환하는 메서드
     private Phone mapResultSetToPhone(ResultSet rs) throws SQLException {
         return new Phone(

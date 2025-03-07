@@ -1,5 +1,6 @@
-package app.store.dao;
+package app.store.test;
 
+import app.store.dao.PlanDao;
 import app.store.dto.Plan;
 import java.math.BigDecimal;
 import java.util.List;

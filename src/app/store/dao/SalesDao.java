@@ -3,9 +3,12 @@ package app.store.dao;
 import app.store.common.DBManager;
 import app.store.dto.Sales;
 
+import java.math.BigDecimal;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class SalesDao {
 
@@ -80,21 +83,59 @@ public class SalesDao {
     // 판매 취소 (DELETE)
     public int deleteSale(int saleId) {
         int result = -1;
-        String sql = "DELETE FROM Sales WHERE sale_id = ?";
+        String sqlDeleteDiscount = "DELETE FROM Discount_History WHERE sale_id = ?";
+        String sqlGetPhoneId = "SELECT phone_id FROM Sales WHERE sale_id = ?";
+        String sqlUpdateStock = "UPDATE Phone SET stock = stock + 1 WHERE phone_id = ?";
+        String sqlDeleteSale = "DELETE FROM Sales WHERE sale_id = ?";
 
         Connection conn = null;
         PreparedStatement pstmt = null;
+        ResultSet rs = null;
 
         try {
             conn = DBManager.getConnection();
-            pstmt = conn.prepareStatement(sql);
-            pstmt.setInt(1, saleId);
+            conn.setAutoCommit(false); // 트랜잭션 시작
 
+            // 1️⃣ 할인 내역 삭제
+            pstmt = conn.prepareStatement(sqlDeleteDiscount);
+            pstmt.setInt(1, saleId);
+            pstmt.executeUpdate();
+            pstmt.close();
+
+            // 2️⃣ 판매된 휴대폰 ID 조회
+            int phoneId = -1;
+            pstmt = conn.prepareStatement(sqlGetPhoneId);
+            pstmt.setInt(1, saleId);
+            rs = pstmt.executeQuery();
+            if (rs.next()) {
+                phoneId = rs.getInt("phone_id");
+            }
+            rs.close();
+            pstmt.close();
+
+            // 3️⃣ 재고 복구
+            if (phoneId != -1) {
+                pstmt = conn.prepareStatement(sqlUpdateStock);
+                pstmt.setInt(1, phoneId);
+                pstmt.executeUpdate();
+                pstmt.close();
+            }
+
+            // 4️⃣ 판매 내역 삭제
+            pstmt = conn.prepareStatement(sqlDeleteSale);
+            pstmt.setInt(1, saleId);
             result = pstmt.executeUpdate();
+
+            conn.commit(); // 트랜잭션 완료
         } catch (SQLException e) {
+            try {
+                if (conn != null) conn.rollback();
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
             e.printStackTrace();
         } finally {
-            DBManager.releaseConnection(pstmt, conn);
+            DBManager.releaseConnection(rs, pstmt, conn);
         }
         return result;
     }
@@ -200,6 +241,162 @@ public class SalesDao {
             DBManager.releaseConnection(rs, pstmt, conn);
         }
         return sale;
+    }
+
+    public List<Sales> searchSales(Integer customerId, Integer employeeId, Date startDate, Date endDate) {
+        List<Sales> salesList = new ArrayList<>();
+        StringBuilder sql = new StringBuilder("SELECT * FROM Sales WHERE 1=1");
+
+        if (customerId != null) sql.append(" AND customer_id = ?");
+        if (employeeId != null) sql.append(" AND employee_id = ?");
+        if (startDate != null) sql.append(" AND sale_date >= ?");
+        if (endDate != null) sql.append(" AND sale_date <= ?");
+
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+        ResultSet rs = null;
+
+        try {
+            conn = DBManager.getConnection();
+            pstmt = conn.prepareStatement(sql.toString());
+
+            int index = 1;
+            if (customerId != null) pstmt.setInt(index++, customerId);
+            if (employeeId != null) pstmt.setInt(index++, employeeId);
+            if (startDate != null) pstmt.setDate(index++, startDate);
+            if (endDate != null) pstmt.setDate(index++, endDate);
+
+            rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                salesList.add(mapResultSetToSales(rs));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            DBManager.releaseConnection(rs, pstmt, conn);
+        }
+        return salesList;
+    }
+
+    // 연간 매출 데이터 조회
+    public Map<String, BigDecimal> getYearlySales(String year) {
+        Map<String, BigDecimal> salesData = new HashMap<>();
+        String sql = "SELECT MONTH(sale_date) AS month, SUM(total_price) AS total FROM Sales WHERE YEAR(sale_date) = ? GROUP BY month";
+
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+        ResultSet rs = null;
+
+        try {
+            conn = DBManager.getConnection();
+            pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, year);
+            rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                salesData.put(rs.getString("month") + "월", rs.getBigDecimal("total"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            DBManager.releaseConnection(rs, pstmt, conn);
+        }
+        return salesData;
+    }
+
+    // 특정 월의 매출 데이터 조회
+    public Map<String, BigDecimal> getMonthlySales(String year, String month) {
+        Map<String, BigDecimal> salesData = new HashMap<>();
+        String sql = "SELECT DAY(sale_date) AS day, SUM(total_price) AS total FROM Sales WHERE YEAR(sale_date) = ? AND MONTH(sale_date) = ? GROUP BY day";
+
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+        ResultSet rs = null;
+
+        try {
+            conn = DBManager.getConnection();
+            pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, year);
+            pstmt.setString(2, month);
+            rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                salesData.put(rs.getString("day") + "일", rs.getBigDecimal("total"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            DBManager.releaseConnection(rs, pstmt, conn);
+        }
+        return salesData;
+    }
+
+    public int insertSaleWithDiscount(Sales sale, int discountId) {
+        int result = -1;
+        String insertSaleSql = "INSERT INTO Sales (sale_date, total_price, customer_id, phone_id, plan_id, employee_id, activation_type, sim_option, installment_months) " +
+                "VALUES (CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        String insertDiscountHistorySql = "INSERT INTO Discount_History (sale_id, discount_id) VALUES (?, ?)";
+
+        Connection conn = null;
+        PreparedStatement saleStmt = null;
+        PreparedStatement discountStmt = null;
+        ResultSet generatedKeys = null;
+
+        try {
+            conn = DBManager.getConnection();
+            conn.setAutoCommit(false); // 트랜잭션 시작
+
+            // 1️⃣ 판매 내역 등록
+            saleStmt = conn.prepareStatement(insertSaleSql, Statement.RETURN_GENERATED_KEYS);
+            saleStmt.setBigDecimal(1, sale.getTotalPrice());
+            saleStmt.setInt(2, sale.getCustomerId());
+            saleStmt.setInt(3, sale.getPhoneId());
+            saleStmt.setInt(4, sale.getPlanId());
+            saleStmt.setInt(5, sale.getEmployeeId());
+            saleStmt.setString(6, sale.getActivationType());
+            saleStmt.setString(7, sale.getSimOption());
+            saleStmt.setInt(8, sale.getInstallmentMonths());
+
+            int saleResult = saleStmt.executeUpdate();
+
+            if (saleResult > 0) {
+                // 생성된 sale_id 가져오기
+                generatedKeys = saleStmt.getGeneratedKeys();
+                if (generatedKeys.next()) {
+                    int saleId = generatedKeys.getInt(1);
+                    sale.setSaleId(saleId);
+
+                    // 2️⃣ 할인 내역 저장 (할인 ID가 0보다 클 경우만 실행)
+                    if (discountId > 0) {
+                        discountStmt = conn.prepareStatement(insertDiscountHistorySql);
+                        discountStmt.setInt(1, saleId);
+                        discountStmt.setInt(2, discountId);
+                        discountStmt.executeUpdate();
+                    }
+                }
+            }
+            conn.commit(); // 트랜잭션 완료
+            result = saleResult;
+        } catch (SQLException e) {
+            try {
+                if (conn != null) conn.rollback();
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+            e.printStackTrace();
+        } finally {
+            DBManager.releaseConnection(generatedKeys, saleStmt, conn);
+            if (discountStmt != null) {
+                try {
+                    discountStmt.close();
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return result;
     }
 
     // ResultSet을 Sales 객체로 변환하는 메서드

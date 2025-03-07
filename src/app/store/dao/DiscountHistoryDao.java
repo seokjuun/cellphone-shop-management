@@ -80,6 +80,41 @@ public class DiscountHistoryDao {
         return result;
     }
 
+    // 🔹 특정 고객이 받은 할인 내역 조회
+    public List<String> getCustomerDiscounts(int customerId) {
+        List<String> discountList = new ArrayList<>();
+        String sql = "SELECT d.discount_id, d.discount_amount, d.activation_type, d.start_date, d.end_date, p.model_name " +
+                "FROM Discount_History dh " +
+                "JOIN Discount_Policy d ON dh.discount_id = d.discount_id " +
+                "JOIN Sales s ON dh.sale_id = s.sale_id " +
+                "JOIN Phone p ON s.phone_id = p.phone_id " +
+                "WHERE s.customer_id = ?";
+
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+        ResultSet rs = null;
+
+        try {
+            conn = DBManager.getConnection();
+            pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, customerId);
+            rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                discountList.add("할인 ID: " + rs.getInt("discount_id") +
+                        " | 할인 금액: " + rs.getBigDecimal("discount_amount") +
+                        "원 | 개통 유형: " + rs.getString("activation_type") +
+                        " | 적용 기간: " + rs.getDate("start_date") + " ~ " + rs.getDate("end_date") +
+                        " | 휴대폰 모델: " + rs.getString("model_name"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            DBManager.releaseConnection(rs, pstmt, conn);
+        }
+        return discountList;
+    }
+
     // ResultSet을 DiscountHistory 객체로 변환하는 메서드
     private DiscountHistory mapResultSetToDiscountHistory(ResultSet rs) throws SQLException {
         return new DiscountHistory(

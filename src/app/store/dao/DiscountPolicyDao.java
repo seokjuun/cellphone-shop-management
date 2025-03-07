@@ -3,9 +3,12 @@ package app.store.dao;
 import app.store.common.DBManager;
 import app.store.dto.DiscountPolicy;
 
+import java.math.BigDecimal;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class DiscountPolicyDao {
 
@@ -112,6 +115,35 @@ public class DiscountPolicyDao {
             DBManager.releaseConnection(rs, pstmt, conn);
         }
         return discountPolicy;
+    }
+
+    // 🔹 특정 휴대폰과 개통 유형에 적용 가능한 할인 목록 조회
+    public Map<Integer, BigDecimal> getAvailableDiscounts(int phoneId, String activationType) {
+        Map<Integer, BigDecimal> discounts = new HashMap<>();
+        String sql = "SELECT discount_id, discount_amount FROM Discount_Policy " +
+                "WHERE phone_id = ? AND activation_type = ? " +
+                "AND start_date <= CURDATE() AND end_date >= CURDATE()";
+
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+        ResultSet rs = null;
+
+        try {
+            conn = DBManager.getConnection();
+            pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, phoneId);
+            pstmt.setString(2, activationType);
+            rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                discounts.put(rs.getInt("discount_id"), rs.getBigDecimal("discount_amount"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            DBManager.releaseConnection(rs, pstmt, conn);
+        }
+        return discounts;
     }
 
     // ResultSet을 DiscountPolicy 객체로 변환하는 메서드

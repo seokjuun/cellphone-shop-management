@@ -1,5 +1,6 @@
-package app.store.dao;
+package app.store.test;
 
+import app.store.dao.EmployeeDao;
 import app.store.dto.Employee;
 import java.util.List;
 

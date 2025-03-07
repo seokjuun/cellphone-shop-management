@@ -1,5 +1,6 @@
-package app.store.dao;
+package app.store.test;
 
+import app.store.dao.DiscountHistoryDao;
 import app.store.dto.DiscountHistory;
 import java.util.List;
 

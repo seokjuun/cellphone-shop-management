@@ -1,5 +1,6 @@
-package app.store.dao;
+package app.store.test;
 
+import app.store.dao.DiscountPolicyDao;
 import app.store.dto.DiscountPolicy;
 import java.math.BigDecimal;
 import java.sql.Date;
